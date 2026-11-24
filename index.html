@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>הצעת מחיר | יציב ונכון</title>
+<meta property="og:title" content="הצעת מחיר | יציב ונכון">
+<meta property="og:description" content="עמיחי תורגמן · תכנון מבנים וייעוץ הנדסי">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1f2a37; --muted:#6b7280; --brand:#0b5394; --line:#e5e7eb; --bg:#f6f7f9; --ok:#15803d; --err:#b91c1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:Heebo, Arial, sans-serif; font-size:16px; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 16px; }
+  header .brand { font-weight:700; color:var(--brand); font-size:18px; }
+  header .sub { color:var(--muted); font-size:13px; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:4px 0 4px; }
+  .lead { color:var(--muted); margin:0 0 14px; font-size:15px; }
+  #pages img { width:100%; height:auto; display:block; background:#fff; margin:0 0 10px; box-shadow:0 1px 4px rgba(0,0,0,.12); border-radius:4px; }
+  .loading { text-align:center; color:var(--muted); padding:40px 0; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin-top:8px; }
+  label { display:block; font-weight:500; margin:12px 0 6px; }
+  input[type=text] { width:100%; font:inherit; font-size:17px; padding:11px 12px; border:1px solid #cbd5e1; border-radius:8px; }
+  .padwrap { position:relative; border:1.5px dashed #94a3b8; border-radius:8px; background:#fcfcfd; height:180px; touch-action:none; }
+  #pad { width:100%; height:100%; display:block; touch-action:none; cursor:crosshair; }
+  .padhint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#94a3b8; pointer-events:none; font-size:15px; }
+  .row { display:flex; justify-content:space-between; align-items:center; margin-top:6px; color:var(--muted); font-size:14px; }
+  button.link { background:none; border:none; color:var(--brand); font:inherit; font-size:14px; padding:4px 0; cursor:pointer; }
+  .check { display:flex; gap:10px; align-items:flex-start; margin-top:16px; font-size:15px; line-height:1.5; }
+  .check input { width:22px; height:22px; margin-top:2px; flex:none; }
+  #go { width:100%; margin-top:18px; font:inherit; font-size:18px; font-weight:700; color:#fff; background:var(--brand); border:none; border-radius:10px; padding:14px; cursor:pointer; }
+  #go:disabled { opacity:.55; cursor:default; }
+  .msg { margin-top:12px; font-size:15px; }
+  .msg.err { color:var(--err); }
+  .done { text-align:center; padding:30px 10px; }
+  .done .big { font-size:46px; color:var(--ok); }
+  .done h2 { margin:8px 0; }
+  .fine { color:var(--muted); font-size:12.5px; margin-top:14px; line-height:1.5; }
+</style>
+</head>
+<body>
+<header><div class="brand">יציב ונכון</div><div class="sub">עמיחי תורגמן · תכנון מבנים וייעוץ הנדסי</div></header>
+<main id="app"></main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+// השרת: Google Apps Script "חתימה על הצעות מחיר". הדף הזה ציבורי ואין בו שום מידע על לקוחות;
+// ההצעה נטענת רק לפי הקוד האקראי שבקישור (?q=).
+var API = 'https://script.google.com/macros/s/AKfycbwrij-NNIygsEVf4ZWurQjryT21luoMOImAQvTe2cPSyrDh-xryMQSYjwFT79JM0rJiUA/exec';
+var DATA = null;
+var app = document.getElementById('app');
+var pdfBytes = null, hasInk = false;
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+function start() {
+  if (DATA.mode === 'notfound') {
+    app.innerHTML = '<div class="done"><h2>הקישור לא תקין</h2><p class="lead">אולי הוא נקטע בהעתקה. כדאי לפנות לעמיחי ולבקש קישור חדש.</p></div>';
+  } else if (DATA.mode === 'expired') {
+    app.innerHTML = '<div class="done"><h2>תוקף ההצעה הסתיים</h2><p class="lead">' + esc(DATA.title) +
+      '<br>לפרטים אפשר לפנות לעמיחי.</p></div>';
+  } else if (DATA.mode === 'signed') {
+    app.innerHTML = '<div class="done"><div class="big">✓</div><h2>ההצעה כבר נחתמה</h2><p class="lead">' + esc(DATA.title) +
+      '<br>נחתמה ע"י ' + esc(DATA.info.name) + ' ב-' + esc(DATA.info.when) + '</p></div>';
+  } else {
+    renderSign();
+  }
+}
+
+function renderSign() {
+  app.innerHTML =
+    '<h1>' + esc(DATA.title) + '</h1>' +
+    '<p class="lead">שלום ' + esc(DATA.client) + ', זו הצעת המחיר המלאה. אחרי הקריאה אפשר לחתום בתחתית העמוד.</p>' +
+    '<div id="pages"><div class="loading">טוען את ההצעה…</div></div>' +
+    '<div class="card">' +
+      '<label for="name">שם מלא</label>' +
+      '<input id="name" type="text" autocomplete="name" placeholder="שם פרטי ושם משפחה">' +
+      '<label>חתימה</label>' +
+      '<div class="padwrap"><canvas id="pad"></canvas><div class="padhint" id="hint">חתמו כאן באצבע</div></div>' +
+      '<div class="row"><span>תאריך: ' + esc(DATA.today) + '</span><button class="link" id="clear" type="button">ניקוי החתימה</button></div>' +
+      '<label class="check"><input type="checkbox" id="agree"><span>קראתי את הצעת המחיר ואת נספח התנאים המסחריים, ואני מאשר/ת אותם.</span></label>' +
+      '<button id="go" type="button" disabled>אישור וחתימה</button>' +
+      '<div id="msg" class="msg"></div>' +
+      '<div class="fine">לאחר החתימה יישמר עותק חתום של ההצעה, עם תיעוד מועד החתימה וטביעה דיגיטלית של המסמך.' + (DATA.emailCopy ? ' עותק חתום יישלח אליכם במייל.' : '') + '</div>' +
+    '</div>';
+  pdfBytes = b64ToBytes(DATA.pdf);
+  renderPages();
+  setupPad();
+  ['name','agree'].forEach(function(id){ document.getElementById(id).addEventListener('input', validate); });
+  document.getElementById('agree').addEventListener('change', validate);
+  document.getElementById('go').addEventListener('click', submit);
+}
+
+function b64ToBytes(b64){ var s = atob(b64), a = new Uint8Array(s.length); for (var i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+function bytesToB64(bytes){ var s='', CH=0x8000; for (var i=0;i<bytes.length;i+=CH) s += String.fromCharCode.apply(null, bytes.subarray(i,i+CH)); return btoa(s); }
+
+function renderPages() {
+  var box = document.getElementById('pages');
+  box.innerHTML = DATA.pages.map(function(b64, i){
+    return '<img alt="עמוד ' + (i+1) + ' של ההצעה" src="data:image/jpeg;base64,' + b64 + '">';
+  }).join('');
+}
+
+var pad, pctx, drawing=false, last=null, strokes=[];
+function setupPad() {
+  pad = document.getElementById('pad'); pctx = pad.getContext('2d');
+  function size(){ var r = pad.getBoundingClientRect(), d = window.devicePixelRatio||1;
+    pad.width = r.width*d; pad.height = r.height*d; pctx.setTransform(d,0,0,d,0,0); redraw(); }
+  window.addEventListener('resize', size); size();
+  function pos(e){ var r = pad.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top }; }
+  pad.addEventListener('pointerdown', function(e){ e.preventDefault(); try { pad.setPointerCapture(e.pointerId); } catch(_) {} drawing=true; last=pos(e); strokes.push([last]); dot(last); });
+  pad.addEventListener('pointermove', function(e){ if(!drawing) return; e.preventDefault(); var p=pos(e); strokes[strokes.length-1].push(p); seg(last,p); last=p; });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(t){ pad.addEventListener(t, function(){ if(drawing){ drawing=false; hasInk=true; document.getElementById('hint').style.display='none'; validate(); } }); });
+  document.getElementById('clear').addEventListener('click', function(){ strokes=[]; hasInk=false; redraw(); document.getElementById('hint').style.display=''; validate(); });
+}
+function style(){ pctx.strokeStyle='#0b2a5b'; pctx.fillStyle='#0b2a5b'; pctx.lineWidth=2.4; pctx.lineCap='round'; pctx.lineJoin='round'; }
+function dot(p){ style(); pctx.beginPath(); pctx.arc(p.x,p.y,1.2,0,7); pctx.fill(); }
+function seg(a,b){ style(); pctx.beginPath(); pctx.moveTo(a.x,a.y); pctx.lineTo(b.x,b.y); pctx.stroke(); }
+function redraw(){ pctx.clearRect(0,0,pad.width,pad.height); strokes.forEach(function(s){ dot(s[0]); for(var i=1;i<s.length;i++) seg(s[i-1],s[i]); }); }
+
+function validate(){
+  var ok = document.getElementById('name').value.trim().length >= 2 && hasInk && document.getElementById('agree').checked;
+  document.getElementById('go').disabled = !ok;
+}
+
+// חותך את החתימה לגבולות הדיו ומחזיר canvas
+function trimmedSignature(){
+  var w=pad.width, h=pad.height, d=pctx.getImageData(0,0,w,h).data, x0=w,y0=h,x1=0,y1=0;
+  for (var y=0;y<h;y++) for (var x=0;x<w;x++) if (d[(y*w+x)*4+3]>10){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  var m=6; x0=Math.max(0,x0-m); y0=Math.max(0,y0-m); x1=Math.min(w-1,x1+m); y1=Math.min(h-1,y1+m);
+  var c=document.createElement('canvas'); c.width=x1-x0+1; c.height=y1-y0+1;
+  c.getContext('2d').drawImage(pad,x0,y0,c.width,c.height,0,0,c.width,c.height); return c;
+}
+
+// בלוק "שם + חתימה" בגודל המלבן, ברזולוציה פי 6
+function nameSigBlock(sig, name, rw, rh){
+  var S=6, c=document.createElement('canvas'); c.width=rw*S; c.height=rh*S; var g=c.getContext('2d');
+  var nameH = 9*S, gap = 1*S, sigH = c.height - nameH - gap;
+  var k = Math.min(c.width/sig.width, sigH/sig.height), sw=sig.width*k, sh=sig.height*k;
+  g.drawImage(sig, (c.width-sw)/2, (sigH-sh)/2 + 0, sw, sh);
+  g.fillStyle='#0b2a5b'; g.direction='rtl'; g.textAlign='center'; g.textBaseline='bottom';
+  var fs=8*S; g.font='500 '+fs+'px Heebo, Arial'; while (g.measureText(name).width > c.width && fs > 4*S) { fs -= S/2; g.font='500 '+fs+'px Heebo, Arial'; }
+  g.fillText(name, c.width/2, c.height); return c;
+}
+function textBlock(text, rw, rh, pt){
+  var S=6, c=document.createElement('canvas'); c.width=rw*S; c.height=rh*S; var g=c.getContext('2d');
+  g.fillStyle='#0b2a5b'; g.font='500 '+(pt*S)+'px Heebo, Arial'; g.textAlign='center'; g.textBaseline='bottom';
+  g.fillText(text, c.width/2, c.height); return c;
+}
+function auditPage(name, whenLocal, ua){
+  var W=595*2, H=842*2, c=document.createElement('canvas'); c.width=W; c.height=H; var g=c.getContext('2d');
+  g.fillStyle='#fff'; g.fillRect(0,0,W,H); g.fillStyle='#1f2a37'; g.direction='rtl'; g.textAlign='right';
+  var x=W-120, y=200;
+  function line(t, size, weight, color, ltr){ g.font=(weight||400)+' '+(size*2)+'px Heebo, Arial'; g.fillStyle=color||'#1f2a37';
+    if (ltr){ g.direction='ltr'; g.textAlign='left'; g.fillText(t, 120, y); g.direction='rtl'; g.textAlign='right'; } else g.fillText(t, x, y); y += size*2*1.9; }
+  line('אישור חתימה דיגיטלית', 20, 700, '#0b5394');
+  line('יציב ונכון · עמיחי תורגמן, תכנון מבנים וייעוץ הנדסי', 11, 400, '#6b7280');
+  y += 30;
+  line('מסמך: ' + DATA.title, 12, 500);
+  line('נחתם על ידי: ' + name, 12, 500);
+  line('מועד החתימה: ' + whenLocal + ' (שעון ישראל)', 12, 500);
+  line('אופן החתימה: חתימה ידנית על גבי מסך, הקלדת שם ואישור קריאת ההצעה ונספח התנאים.', 11);
+  y += 20;
+  line('טביעה דיגיטלית (SHA-256) של ההצעה כפי שהוצגה לחותם/ת:', 11);
+  line(DATA.hash, 9.5, 400, '#1f2a37', true);
+  y += 10;
+  line('מכשיר ודפדפן:', 11);
+  var u = ua; while (u.length){ line(u.slice(0,95), 8.5, 400, '#6b7280', true); u = u.slice(95); }
+  y += 20;
+  line('עותק זה הופק אוטומטית בעת החתימה.', 10, 400, '#6b7280');
+  line('עמודי ההצעה שלפני עמוד זה לא שונו, למעט הוספת החתימה, השם והתאריך.', 10, 400, '#6b7280');
+  return c;
+}
+function canvasPng(c){ return b64ToBytes(c.toDataURL('image/png').split(',')[1]); }
+
+function submit(){
+  var btn=document.getElementById('go'), msg=document.getElementById('msg');
+  btn.disabled=true; btn.textContent='חותם…'; msg.className='msg'; msg.textContent='';
+  var name=document.getElementById('name').value.trim(), ua=navigator.userAgent;
+  var whenLocal = new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date());
+  var sig = trimmedSignature();
+  document.fonts.ready.then(function(){ return PDFLib.PDFDocument.load(pdfBytes); }).then(function(doc){
+    var page = doc.getPages()[DATA.sigPage], PH = page.getHeight();
+    var r = DATA.sigRect, rw=r[2]-r[0], rh=r[3]-r[1];
+    var dr = DATA.dateRect, dw=dr[2]-dr[0], dh=dr[3]-dr[1];
+    return Promise.all([
+      doc.embedPng(canvasPng(nameSigBlock(sig, name, rw, rh))),
+      doc.embedPng(canvasPng(textBlock(DATA.today, dw, dh, 10))),
+      doc.embedPng(canvasPng(auditPage(name, whenLocal, ua)))
+    ]).then(function(imgs){
+      page.drawImage(imgs[0], { x:r[0], y:PH-r[3], width:rw, height:rh });
+      page.drawImage(imgs[1], { x:dr[0], y:PH-dr[3], width:dw, height:dh });
+      var ap = doc.addPage([595.32, 841.92]); ap.drawImage(imgs[2], { x:0, y:0, width:595.32, height:841.92 });
+      return doc.save();
+    });
+  }).then(function(out){
+    // עותק ללקוח: מסמך חדש עם עמודי ההצעה בלבד (removePage משאיר את תמונת עמוד האישור בתוך הקובץ)
+    return Promise.all([PDFLib.PDFDocument.load(out), PDFLib.PDFDocument.create()]).then(function(d){
+      var src=d[0], dst=d[1], idx=src.getPageIndices().slice(0,-1);
+      return dst.copyPages(src, idx).then(function(pages){ pages.forEach(function(p){ dst.addPage(p); }); return dst.save(); });
+    }).then(function(clientOut){ return [out, clientOut]; });
+  }).then(function(outs){
+    return fetch(API, {
+      method: 'POST', credentials: 'omit',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token:DATA.token, name:name, ua:ua, originalHash:DATA.hash, pdf:bytesToB64(outs[0]), clientPdf:bytesToB64(outs[1]), sig:sig.toDataURL('image/png').split(',')[1] })
+    }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (res) {
+      if (!res.ok) throw new Error(res.error || 'שגיאה');
+      var copy = res.emailed ? 'עותק חתום נשלח אליכם במייל.' : 'עותק חתום נשמר אצל עמיחי.';
+      app.innerHTML = '<div class="done"><div class="big">✓</div><h2>תודה, ההצעה נחתמה</h2><p class="lead">' + esc(DATA.title) +
+        '<br>נחתמה ע"י ' + esc(name) + ' ב-' + esc(res.when) + '.<br>' + copy + '</p></div>';
+      window.scrollTo(0,0);
+    });
+  }).catch(function(e){ btn.disabled=false; btn.textContent='אישור וחתימה'; msg.className='msg err'; msg.textContent='החתימה לא נשמרה: ' + (e.message||e) + '. אפשר לנסות שוב.'; });
+}
+
+function load() {
+  var token = new URLSearchParams(location.search).get('q') || '';
+  if (!token) { DATA = { mode: 'notfound' }; start(); return; }
+  app.innerHTML = '<div class="loading">טוען את ההצעה…</div>';
+  fetch(API + '?api=1&q=' + encodeURIComponent(token), { credentials: 'omit' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (d) {
+      if (d.mode === 'error') throw new Error(d.error);
+      DATA = d; start();
+    })
+    .catch(function (e) {
+      app.innerHTML = '<div class="done"><h2>לא הצלחתי לטעון את ההצעה</h2><p class="lead">כדאי לנסות שוב בעוד רגע. אם זה חוזר, אפשר לפנות לעמיחי.</p>' +
+        '<button id="retry" type="button" class="link">לנסות שוב</button></div>';
+      document.getElementById('retry').addEventListener('click', load);
+    });
+}
+
+load();
+</script>
+</body>
+</html>
